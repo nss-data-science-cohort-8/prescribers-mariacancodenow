@@ -6,15 +6,10 @@ For this exericse, you'll be working with a database derived from the [Medicare 
 (https://www.hhs.gov/guidance/document/medicare-provider-utilization-and-payment-data-part-d-prescriber-0). 
 More information about the data is contained in the Methodology PDF file. See also the included entity-relationship diagram.
 
-3. 
-    a. Which drug (generic_name) had the highest total drug cost?
-
-    b. Which drug (generic_name) has the hightest total cost per day? **Bonus: Round your cost per day column to 2 decimal places. Google ROUND to see how this works.**
-
-4. 
-    a. For each drug in the drug table, return the drug name and then a column named 'drug_type' which says 'opioid' for drugs which have opioid_drug_flag = 'Y', says 'antibiotic' for those drugs which have antibiotic_drug_flag = 'Y', and says 'neither' for all other drugs. **Hint:** You may want to use a CASE expression for this. See https://www.postgresqltutorial.com/postgresql-tutorial/postgresql-case/ 
-
-    b. Building off of the query you wrote for part a, determine whether more was spent (total_drug_cost) on opioids or on antibiotics. Hint: Format the total costs as MONEY for easier comparision.
+2. 
+    d. **Difficult Bonus:** *Do not attempt until you have solved all other problems!* 
+	For each specialty, report the percentage of total claims by that specialty which are for opioids. 
+	Which specialties have a high percentage of opioids?
 
 5. 
     a. How many CBSAs are in Tennessee? **Warning:** The cbsa table contains information for all states, not just Tennessee.
@@ -62,7 +57,7 @@ LIMIT 1;
 
 SELECT npi, nppes_provider_first_name, nppes_provider_last_org_name, specialty_description, total_claims
 FROM (SELECT 
-		npi, SUM(total_claim_count) as total_claims
+		npi, SUM(total_claim_count) AS total_claims
 		FROM prescriber
 		LEFT JOIN prescription
 		USING(npi)
@@ -82,7 +77,16 @@ FROM prescriber
 LEFT JOIN prescription
 USING(npi)
 GROUP BY specialty_description
-ORDER BY SUM(total_claim_count) DESC NULLS LAST
+ORDER BY total_claims DESC NULLS LAST
+LIMIT 1;
+
+--OR INNER JOIN to join without nulls (thanks Alexa!):
+SELECT specialty_description, SUM(total_claim_count) as total_claims
+FROM prescriber
+INNER JOIN prescription
+USING(npi)
+GROUP BY specialty_description
+ORDER BY total_claims DESC
 LIMIT 1;
 
 /*
@@ -90,7 +94,17 @@ LIMIT 1;
     b. Which specialty had the most total number of claims for opioids?
 */
 
-
+SELECT specialty_description, SUM(total_claim_count) as total_claims
+FROM (SELECT npi, drug_name, total_claim_count
+	  FROM prescription
+	  INNER JOIN drug
+	  USING(drug_name)
+	  WHERE opioid_drug_flag = 'Y')
+INNER JOIN prescriber
+USING(npi)
+GROUP BY specialty_description
+ORDER BY total_claims DESC
+LIMIT 1;
 
 /*
 2. 
@@ -98,9 +112,74 @@ LIMIT 1;
 	prescriptions in the prescription table?
 */
 
+SELECT DISTINCT specialty_description
+FROM prescriber
+LEFT JOIN prescription
+USING(npi)
+WHERE total_claim_count IS NULL;
+
 /*
 2. 
     d. **Difficult Bonus:** *Do not attempt until you have solved all other problems!* 
 	For each specialty, report the percentage of total claims by that specialty which are for opioids. 
 	Which specialties have a high percentage of opioids?
 */
+
+/*
+3. 
+    a. Which drug (generic_name) had the highest total drug cost?
+*/
+
+SELECT generic_name, total_drug_cost
+FROM drug
+INNER JOIN prescription
+USING(drug_name)
+ORDER BY total_drug_cost DESC
+LIMIT 1;
+
+/*
+3. 
+    b. Which drug (generic_name) has the hightest total cost per day? 
+	**Bonus: Round your cost per day column to 2 decimal places. Google ROUND to see how this works.**
+*/
+
+SELECT generic_name, ROUND((total_drug_cost / total_day_supply),2) AS cost_per_day
+FROM drug
+INNER JOIN prescription
+USING(drug_name)
+ORDER BY cost_per_day DESC
+LIMIT 1;
+
+/*
+4. 
+    a. For each drug in the drug table, return the drug name and then a column named 'drug_type' which says 
+	'opioid' for drugs which have opioid_drug_flag = 'Y', 
+	says 'antibiotic' for those drugs which have antibiotic_drug_flag = 'Y', and says 'neither' for all other drugs. 
+	**Hint:** You may want to use a CASE expression for this. 
+	See https://www.postgresqltutorial.com/postgresql-tutorial/postgresql-case/ 
+*/
+
+SELECT drug_name,
+	CASE WHEN opioid_drug_flag = 'Y' THEN 'opioid'
+		 WHEN antibiotic_drug_flag = 'Y' THEN 'antibiotic'
+		 ELSE 'neither' END AS drug_type
+FROM drug;
+
+/* 
+4. 
+    b. Building off of the query you wrote for part a, determine whether more was spent (total_drug_cost) on opioids 
+	or on antibiotics. Hint: Format the total costs as MONEY for easier comparison.
+*/
+
+SELECT CAST(SUM(total_drug_cost) AS MONEY) AS total_cost, 
+	   CASE WHEN opioid_drug_flag = 'Y' THEN 'opioid'
+			WHEN antibiotic_drug_flag = 'Y' THEN 'antibiotic'
+		 	END AS drug_type
+FROM drug
+INNER JOIN prescription
+USING(drug_name)
+WHERE CASE WHEN opioid_drug_flag = 'Y' THEN 'opioid'
+			WHEN antibiotic_drug_flag = 'Y' THEN 'antibiotic'
+		 	END IS NOT NULL
+GROUP BY drug_type
+ORDER BY total_cost DESC;
